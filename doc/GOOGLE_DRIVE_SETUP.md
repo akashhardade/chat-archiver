@@ -47,6 +47,13 @@ The app uses `google_sign_in` 7.x on Android (Credential Manager +
 
 ## 3. Android OAuth clients (one per applicationId + SHA-1)
 
+This step is required on a real phone. Without a matching Android OAuth
+client, Credential Manager closes after the account picker and the app shows
+“Sign-in was cancelled.”
+
+Create the clients in the **same** Google Cloud project as the Web client
+(currently `cursor-otp`, number `133279653968`).
+
 Application IDs (from the Gradle flavors):
 
 | Flavor | applicationId |

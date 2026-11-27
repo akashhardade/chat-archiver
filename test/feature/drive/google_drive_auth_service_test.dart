@@ -1,3 +1,4 @@
+import 'package:chat_archiver/config/flavor/env.dart';
 import 'package:chat_archiver/core/error/failure.dart';
 import 'package:chat_archiver/core/storage/key_value_store.dart';
 import 'package:chat_archiver/core/storage/storage_keys.dart';
@@ -124,14 +125,9 @@ void main() {
     expect(platform.requests, isEmpty);
   });
 
-  test(
-      'connect without a real GOOGLE_SERVER_CLIENT_ID fails before authenticate',
-      () async {
-    // Test process has no --dart-define, so Env rejects the empty/placeholder id.
-    final result = await service().connect();
-    final failure = result.fold((f) => f, (_) => null);
-    expect(failure, isA<AuthFailure>());
-    expect(failure!.message, contains('GOOGLE_SERVER_CLIENT_ID'));
+  test('Env ships a non-placeholder default Web client ID for mobile runs', () {
+    expect(Env.hasGoogleServerClientId, isTrue);
+    expect(Env.googleServerClientId, contains('.apps.googleusercontent.com'));
   });
 
   test('disconnect after a restart registers the account so it can be revoked',

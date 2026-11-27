@@ -11,9 +11,15 @@ class Env {
 
   /// OAuth *Web application* client ID of the Google Cloud project. Required
   /// by `google_sign_in` 7.x on Android (there is no `google-services.json`
-  /// in this app). Empty when not supplied.
+  /// in this app).
+  ///
+  /// Override at build time with `--dart-define` / `dart_defines.json`. The
+  /// default is the project's Web client so a plain `flutter run` on a phone
+  /// still can open Google Sign-In (client IDs are public; the secret is not).
   static const String googleServerClientId = String.fromEnvironment(
     'GOOGLE_SERVER_CLIENT_ID',
+    defaultValue:
+        '648674445211-hgsgbk6vm0hpoe16gtoii3jb9pebaj2h.apps.googleusercontent.com',
   );
 
   /// True when [googleServerClientId] looks like a real Web OAuth client ID.

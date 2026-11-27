@@ -24,6 +24,11 @@ val hasReleaseKeystore: Boolean =
         keystoreProperties["keyPassword"] != null &&
         keystoreProperties["storePassword"] != null
 
+// Web OAuth client ID for google_sign_in (Credential Manager). Keep in sync
+// with Env.googleServerClientId / dart_defines.json.
+val defaultWebClientId =
+    "648674445211-hgsgbk6vm0hpoe16gtoii3jb9pebaj2h.apps.googleusercontent.com"
+
 android {
     namespace = "com.vervali.chatarchiver"
     compileSdk = 36
@@ -44,6 +49,8 @@ android {
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Used by google_sign_in_android when Dart does not pass serverClientId.
+        resValue("string", "default_web_client_id", defaultWebClientId)
     }
 
     signingConfigs {

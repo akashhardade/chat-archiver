@@ -76,7 +76,11 @@ class GoogleDriveAuthService implements DriveAuthService {
 
   @override
   Future<Either<Failure, DriveAccount>> connect() async {
-    if (!Env.hasGoogleServerClientId) {
+    // On Android, google_sign_in can also resolve serverClientId from the
+    // `default_web_client_id` string resource. Still prefer a real dart-define.
+    final androidNativeFallback =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    if (!Env.hasGoogleServerClientId && !androidNativeFallback) {
       return Left(AuthFailure(Env.googleServerClientIdConfigError));
     }
     try {
@@ -100,8 +104,15 @@ class GoogleDriveAuthService implements DriveAuthService {
       await _storage.write(StorageKeys.driveAccountEmail, account.email);
       return Right(_current!);
     } on GoogleSignInException catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          'GoogleDriveAuth.connect failed: code=${e.code.name} '
+          'description=${e.description} details=${e.details}',
+        );
+      }
       return Left(_mapSignInException(e));
     } catch (e) {
+      if (kDebugMode) debugPrint('GoogleDriveAuth.connect failed: $e');
       return Left(UnknownFailure('Google sign-in failed: $e'));
     }
   }
