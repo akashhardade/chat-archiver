@@ -58,12 +58,31 @@ class ScreenStateTest {
         assertEquals(300, rows[0].bounds.top)
     }
 
-    @Test fun twoExactRowsAreBothReported() {
+    @Test fun twoExactRowsAreBothReportedWhenFarApart() {
         val wa = listOf(
             n("conversations_row_contact_name", "Alpha", top = 300),
             n("conversations_row_contact_name", "Alpha", top = 600),
         )
         assertEquals(2, ScreenState.exactResultRows(wa, "Alpha").size)
+    }
+
+    @Test fun nearDuplicateSearchRowsCollapseToOne() {
+        val a = n("conversations_row_contact_name", "test", top = 400, bottom = 450)
+        val b = n("conversations_row_contact_name", "test", top = 410, bottom = 460)
+        assertEquals(1, ScreenState.exactResultRows(listOf(a, b, screenBottom), "test").size)
+    }
+
+    @Test fun prefersChatsSectionOverMessagesSection() {
+        val chatsHeader = n(text = "Chats", top = 250, bottom = 280)
+        val chatHit = n("conversations_row_contact_name", "test", top = 320, bottom = 370)
+        val messagesHeader = n(text = "Messages", top = 500, bottom = 530)
+        val messageHit = n("conversations_row_contact_name", "test", top = 560, bottom = 610)
+        val rows = ScreenState.exactResultRows(
+            listOf(screenBottom, chatsHeader, chatHit, messagesHeader, messageHit),
+            "test",
+        )
+        assertEquals(1, rows.size)
+        assertEquals(320, rows[0].bounds.top)
     }
 
     @Test fun sameViewSeenTwiceCountsOnce() {
@@ -109,6 +128,43 @@ class ScreenStateTest {
         val child = n(text = "Export chat", top = 12)
         child.parent = parent
         assertTrue(Finders.clickableTarget(child) === parent)
+    }
+
+    @Test fun clickableTargetFindsClickableDescendantForMetaAiSearchBar() {
+        // Live WhatsApp tree: my_search_bar (not clickable) → search_bar_inner_layout (clickable).
+        val outer = n("my_search_bar", top = 246, bottom = 378)
+        val inner = n(
+            "search_bar_inner_layout",
+            desc = "Ask Meta AI or Search",
+            clickable = true,
+            top = 246,
+            bottom = 378,
+        )
+        val label = n(
+            "search_text",
+            text = "Ask Meta AI or Search",
+            top = 282,
+            bottom = 341,
+        )
+        inner.parent = outer
+        label.parent = inner
+        outer.children.add(inner)
+        inner.children.add(label)
+
+        assertTrue(Finders.clickableTarget(outer) === inner)
+        assertTrue(Finders.clickableTarget(label) === inner)
+
+        val hits = Finders.find(listOf(outer, inner, label, screenBottom), WhatsAppSelectors.SEARCH_ENTRY) {
+            !it.editable && Finders.clickableTarget(it).clickable
+        }
+        assertEquals("search_bar_inner_layout", hits.first().idName)
+    }
+
+    @Test fun searchFieldPrefersSearchInputId() {
+        val input = n("search_input", "", editable = true, top = 100)
+        val legacy = n("search_src_text", "", editable = true, top = 100)
+        assertEquals("search_input", ScreenState.searchField(listOf(input, legacy))!!.idName)
+        assertEquals("search_src_text", ScreenState.searchField(listOf(legacy))!!.idName)
     }
 
     @Test fun forbiddenNodes() {

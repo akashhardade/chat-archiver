@@ -71,20 +71,119 @@ object ScreenState {
         }
     }
 
-    /** Exact-title rows (after normalisation) among chat-row title nodes. */
+    /**
+     * Exact-title chat rows to open after search.
+     *
+     * WhatsApp's Meta AI search UI often shows the same title under **Chats** and again under
+     * **Messages** (and may duplicate a11y nodes). We keep only Chats-section / contact-row hits,
+     * spatially de-dupe near-identical nodes, and return distinct Y-ordered candidates.
+     */
     fun exactResultRows(wa: List<UiNode>, groupName: String): List<UiNode> {
-        val rows = Finders.find(wa, WhatsAppSelectors.CHAT_ROW_TITLE) { !it.editable }
-            .filter { ChatNames.matches(it.text, groupName) }
-        if (rows.isNotEmpty()) return rows
-        // Fallback when row ids do not match: any non-editable, non-toolbar node with exactly that text,
-        // below the search field (avoid the search box itself and the conversation toolbar).
         val field = searchField(wa)
         val minTop = field?.bounds?.bottom ?: 0
-        return Finders.dedupe(
-            wa.filter {
-                !it.editable && it.bounds.top >= minTop && !isConversation(wa) &&
-                    ChatNames.matches(it.text, groupName)
-            },
-        )
+
+        val byId = Finders.find(wa, WhatsAppSelectors.CHAT_ROW_TITLE) {
+            !it.editable && it.bounds.top >= minTop && ChatNames.matches(it.text, groupName)
+        }
+        val raw = if (byId.isNotEmpty()) {
+            byId
+        } else {
+            Finders.dedupe(
+                wa.filter {
+                    !it.editable &&
+                        it.bounds.top >= minTop &&
+                        !isConversation(wa) &&
+                        ChatNames.matches(it.text, groupName) &&
+                        !looksLikeMetaAi(it)
+                },
+            )
+        }
+
+        val inChatsSection = filterToChatsSearchSection(wa, raw)
+        val preferred = preferContactRows(inChatsSection.ifEmpty { raw })
+            .filter { !looksLikeMetaAi(it) }
+        return spatialDedupe(preferred)
+    }
+
+    /** True when this node (or an ancestor) is the Meta AI suggestion row, not a chat. */
+    private fun looksLikeMetaAi(n: UiNode): Boolean {
+        var cur: UiNode? = n
+        var hops = 0
+        while (cur != null && hops < 8) {
+            val id = cur.idName.orEmpty().lowercase()
+            if (id.contains("meta_ai") || id.contains("ai_bot") || id.contains("bot_search")) return true
+            val blob = listOfNotNull(cur.text, cur.desc, cur.hint).joinToString(" ")
+            if (ChatNames.labelContains(blob, "Meta AI") || ChatNames.labelEquals(blob, "Ask Meta AI")) {
+                return true
+            }
+            cur = cur.parent
+            hops++
+        }
+        return false
+    }
+
+    /**
+     * If search shows section headers (Chats / Messages / …), keep only nodes whose top is at or
+     * below the Chats header and above the next skip-section header.
+     */
+    private fun filterToChatsSearchSection(wa: List<UiNode>, rows: List<UiNode>): List<UiNode> {
+        if (rows.isEmpty()) return rows
+        // Ignore the bottom-nav "Chats" tab (lower half); only the search-result section header counts.
+        val screenH = screenHeight(wa)
+        val maxHeaderTop = if (screenH > 0) (screenH * 0.55).toInt() else Int.MAX_VALUE
+        val chatsHeader = wa.filter {
+            !it.editable &&
+                it.bounds.top <= maxHeaderTop &&
+                WhatsAppSelectors.SEARCH_SECTION_CHATS.any { label ->
+                    ChatNames.labelEquals(it.text, label)
+                }
+        }.minByOrNull { it.bounds.top } ?: return rows
+
+        val chatsTop = chatsHeader.bounds.top
+        val nextSectionTop = wa.filter { n ->
+            !n.editable &&
+                n.bounds.top > chatsTop + 8 &&
+                n.bounds.top <= maxHeaderTop &&
+                WhatsAppSelectors.SEARCH_SECTION_SKIP.any { label ->
+                    ChatNames.labelEquals(n.text, label)
+                }
+        }.minOfOrNull { it.bounds.top } ?: Int.MAX_VALUE
+
+        val sectioned = rows.filter { it.bounds.top >= chatsTop && it.bounds.top < nextSectionTop }
+        return sectioned.ifEmpty { rows }
+    }
+
+    /** Prefer titles that sit inside a known chat-row container when those exist. */
+    private fun preferContactRows(rows: List<UiNode>): List<UiNode> {
+        if (rows.isEmpty()) return rows
+        fun underContactRow(n: UiNode): Boolean {
+            var cur: UiNode? = n
+            var hops = 0
+            while (cur != null && hops < 8) {
+                if (cur.idName in WhatsAppSelectors.CHAT_ROW_CONTAINER_IDS) return true
+                cur = cur.parent
+                hops++
+            }
+            return false
+        }
+        val nested = rows.filter(::underContactRow)
+        return nested.ifEmpty { rows }
+    }
+
+    /** Merge title nodes that are clearly the same on-screen row (overlapping / near-identical Y). */
+    private fun spatialDedupe(rows: List<UiNode>): List<UiNode> {
+        if (rows.size <= 1) return rows
+        val ordered = rows.sortedBy { it.bounds.top }
+        val out = mutableListOf<UiNode>()
+        for (n in ordered) {
+            val prev = out.lastOrNull()
+            if (prev != null) {
+                val sameBand = kotlin.math.abs(prev.bounds.centerY - n.bounds.centerY) <= 48
+                val overlap = prev.bounds.top < n.bounds.bottom && n.bounds.top < prev.bounds.bottom
+                if (sameBand || overlap) continue
+            }
+            out.add(n)
+        }
+        return out
     }
 }

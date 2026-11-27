@@ -27,7 +27,7 @@ class ExportRunner(private val service: AccessibilityService) {
         TO_CHATS_LIST(10_000, ErrorCode.UNEXPECTED_SCREEN),
         OPEN_SEARCH(8_000, ErrorCode.SEARCH_NOT_FOUND),
         TYPE_QUERY(8_000, ErrorCode.SEARCH_NOT_FOUND),
-        PICK_RESULT(8_000, ErrorCode.GROUP_NOT_FOUND),
+        PICK_RESULT(12_000, ErrorCode.GROUP_NOT_FOUND),
         VERIFY_CHAT(8_000, ErrorCode.UNEXPECTED_SCREEN),
         OPEN_OVERFLOW(8_000, ErrorCode.MENU_NOT_FOUND),
         TAP_MORE(8_000, ErrorCode.MENU_NOT_FOUND),
@@ -265,11 +265,15 @@ class ExportRunner(private val service: AccessibilityService) {
                     return
                 }
                 val h = wa.maxOfOrNull { it.bounds.bottom } ?: 0
+                // Prefer a node we can actually tap (self, ancestor, or clickable child). Top 40%
+                // covers taller Meta AI search bars on some devices.
                 val entry = Finders.find(wa, WhatsAppSelectors.SEARCH_ENTRY) {
-                    !it.editable && (h == 0 || it.bounds.top <= h * 0.30)
+                    !it.editable &&
+                        (h == 0 || it.bounds.top <= h * 0.40) &&
+                        Finders.clickableTarget(it).clickable
                 }.minByOrNull { it.bounds.top }
                 if (entry != null && ScreenReader.click(entry, "open search")) {
-                    enterStep(r, Step.TYPE_QUERY, cooldownMs = 700)
+                    enterStep(r, Step.TYPE_QUERY, cooldownMs = 900)
                 }
             }
 
@@ -290,7 +294,10 @@ class ExportRunner(private val service: AccessibilityService) {
                     r.stableKey = null
                     return
                 }
-                val key = rows.joinToString(";") { "${it.id}${it.bounds}" }
+                // Prefer the topmost Chats-section hit. Meta AI search often also lists the same
+                // title under Messages; VERIFY_CHAT still confirms the opened conversation title.
+                val pick = rows.minByOrNull { it.bounds.top }!!
+                val key = "${pick.id}${pick.bounds}|n=${rows.size}"
                 if (key != r.stableKey) {
                     r.stableKey = key
                     r.stableSince = now
@@ -298,9 +305,12 @@ class ExportRunner(private val service: AccessibilityService) {
                 }
                 if (now - r.stableSince < STABLE_MS) return
                 if (rows.size > 1) {
-                    log(r, "ambiguous: ${rows.size} exact matches for '${g.name}'")
-                    failGroup(r, ErrorCode.WRONG_CHAT)
-                } else if (ScreenReader.click(rows[0], "open chat '${g.name}'")) {
+                    log(
+                        r,
+                        "multiple exact titles for '${g.name}' (${rows.size}); opening topmost at y=${pick.bounds.top}",
+                    )
+                }
+                if (ScreenReader.click(pick, "open chat '${g.name}'")) {
                     enterStep(r, Step.VERIFY_CHAT, cooldownMs = 800)
                 } else {
                     r.stableKey = null
@@ -570,7 +580,7 @@ class ExportRunner(private val service: AccessibilityService) {
         const val POLL_MS = 400L
         const val EVENT_DEBOUNCE_MS = 150L
         private const val SETTLE_MS = 1500L
-        private const val STABLE_MS = 600L
+        private const val STABLE_MS = 900L
         private const val MAX_BACK = 5
         private const val MAX_SCROLLS = 6
         private const val MAX_RUN_SCREEN_ON_MS = 10L * 60L * 1000L

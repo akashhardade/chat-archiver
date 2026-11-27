@@ -116,7 +116,11 @@ object Finders {
         return hits.filter { seen.add("${it.id}|${it.bounds}|${it.text}") }
     }
 
-    /** Nearest clickable node: the node itself or an ancestor (up to [maxUp] levels). */
+    /**
+     * Nearest clickable node: the node itself, an ancestor (up to [maxUp] levels), or — if still
+     * not clickable — the first clickable descendant. WhatsApp's Meta AI search wraps the real
+     * tap target (`search_bar_inner_layout`) inside a non-clickable `my_search_bar` frame.
+     */
     fun clickableTarget(n: UiNode, maxUp: Int = 6): UiNode {
         var cur: UiNode? = n
         var i = 0
@@ -125,6 +129,14 @@ object Finders {
             cur = cur.parent
             i++
         }
-        return n
+        return clickableDescendant(n) ?: n
+    }
+
+    private fun clickableDescendant(n: UiNode): UiNode? {
+        for (child in n.children) {
+            if (child.clickable) return child
+            clickableDescendant(child)?.let { return it }
+        }
+        return null
     }
 }

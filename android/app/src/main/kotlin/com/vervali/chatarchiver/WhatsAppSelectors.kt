@@ -45,8 +45,17 @@ object WhatsAppSelectors {
     val NOT_SHARE_SHEET_PACKAGES = setOf("com.whatsapp", "com.whatsapp.w4b", "com.android.systemui")
 
     val EN = WaStrings(
-        search = listOf("Search"),                                           // [guess-text]
-        searchBarHints = listOf("Ask Meta AI or Search", "Search"),          // [guess-text] newer top bar
+        search = listOf("Search"),
+        // Newer WhatsApp top bar uses "Ask Meta AI or Search"; older builds use "Search…" / "Search or start new chat".
+        searchBarHints = listOf(
+            "Ask Meta AI or Search",
+            "Ask Meta AI or search",
+            "Search or start new chat",
+            "Search chats",
+            "Search…",
+            "Search...",
+            "Search",
+        ),
         moreOptions = listOf("More options"),                                // standard action-bar overflow desc
         more = listOf("More"),                                               // [guess-text] item in overflow menu
         exportChat = listOf("Export chat"),                                  // [guess-text]
@@ -62,14 +71,26 @@ object WhatsAppSelectors {
 
     // ---- Chats list / screen detection ------------------------------------------------------------
 
-    /** Rows of the chat list (and of search results). [guess-id] */
+    /** Rows of the chat list (and of search results). */
     val CHAT_ROW_TITLE_IDS = listOf("conversations_row_contact_name")
+
+    /** Clickable container wrapping a chat row (list + search). WhatsApp 2.25+. */
+    val CHAT_ROW_CONTAINER_IDS = listOf("contact_row_container")
 
     /** Title in the conversation toolbar. [guess-id] */
     val CONVERSATION_TITLE_IDS = listOf("conversation_contact_name")
 
     /** Views that exist only inside an open conversation. [guess-id] */
     val CONVERSATION_MARKER_IDS = listOf("conversation_contact_name", "entry", "conversation_contact_status")
+
+    /**
+     * Search-result section headers. After typing a query, WhatsApp shows Meta AI / Chats / Messages.
+     * Only rows under "Chats" should be opened for export.
+     */
+    val SEARCH_SECTION_CHATS = listOf("Chats")
+    val SEARCH_SECTION_SKIP = listOf(
+        "Messages", "Ask Meta AI", "Meta AI", "Contacts", "Status",
+    )
 
     /** Tab labels used to recognise the Chats list when no row ids match. */
     val CHATS_TAB: List<Sel> = perLocale { l -> l.chatsTab.map { Sel.Text(it) } }
@@ -82,18 +103,35 @@ object WhatsAppSelectors {
 
     // ---- Search ----------------------------------------------------------------------------------
 
-    /** The search text field once search is open. [guess-id] then hint. */
+    /**
+     * The editable search field once search is open.
+     * WhatsApp 2.25+ uses [search_input]; older AppCompat search uses [search_src_text].
+     */
     val SEARCH_FIELD: List<Sel> =
-        listOf(Sel.Id("search_src_text"), Sel.Id("search_input")) +
+        listOf(Sel.Id("search_input"), Sel.Id("search_src_text")) +
             perLocale { l -> l.searchBarHints.map { Sel.HintContains(it) } } +
             perLocale { l -> l.searchBarHints.map { Sel.TextContains(it) } }
 
-    /** What to tap to open search: old toolbar icon, then the newer top search bar. [guess-id] */
+    /**
+     * What to tap to open search.
+     *
+     * Modern WhatsApp (Meta AI bar): clickable [search_bar_inner_layout] (desc "Ask Meta AI or Search")
+     * sits inside non-clickable [my_search_bar]; the label is [search_text] (TextView, not editable).
+     * Prefer the clickable inner layout — matching [my_search_bar] first made clicks fail because
+     * [Finders.clickableTarget] only climbs ancestors, not children.
+     */
     val SEARCH_ENTRY: List<Sel> =
-        listOf(Sel.Id("menuitem_search"), Sel.Id("search_bar"), Sel.Id("my_search_bar")) +
-            perLocale { l -> l.search.map { Sel.Desc(it) } } +
-            perLocale { l -> l.searchBarHints.map { Sel.TextContains(it) } } +
+        listOf(
+            Sel.Id("search_bar_inner_layout"),
+            Sel.Id("menuitem_search"),
+            Sel.Id("search_bar"),
+            Sel.Id("search_text"),
+            // Last resort: outer frame (clickableTarget now also checks descendants).
+            Sel.Id("my_search_bar"),
+        ) +
             perLocale { l -> l.searchBarHints.map { Sel.DescContains(it) } } +
+            perLocale { l -> l.searchBarHints.map { Sel.TextContains(it) } } +
+            perLocale { l -> l.search.map { Sel.Desc(it) } } +
             perLocale { l -> l.searchBarHints.map { Sel.HintContains(it) } }
 
     // ---- Export path -----------------------------------------------------------------------------
