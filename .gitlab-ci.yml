@@ -1,0 +1,322 @@
+stages:
+  - build
+  - distribute
+  - deploy
+
+variables:
+  APP_NAME: $APP_NAME
+  FIREBASE_ANDROID_APP_ID: $FIREBASE_ANDROID_APP_ID
+  FIREBASE_IOS_APP_ID: $FIREBASE_IOS_APP_ID
+  GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: $GOOGLE_PLAY_SERVICE_ACCOUNT_JSON
+  # OAuth *web* client ID (doc/GOOGLE_DRIVE_SETUP.md); set as a CI/CD variable.
+  GOOGLE_SERVER_CLIENT_ID: $GOOGLE_SERVER_CLIENT_ID
+
+build_apk: 
+  stage: build
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main_dev"'
+      when: on_success
+      variables:
+        FLAVOR: "dev"
+    - if: '$CI_COMMIT_BRANCH == "main_stage"'
+      when: manual
+      variables:
+        FLAVOR: "stage"
+    - if: '$CI_COMMIT_BRANCH == "main_prod"'
+      when: on_success
+      variables:
+        FLAVOR: "prod"
+    - when: never # Don't run on any other branch
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}-android
+    policy: pull-push
+    paths:
+      - .dart_tool/
+      - build/
+  image: ghcr.io/cirruslabs/flutter:stable
+  before_script:
+    - flutter pub get
+    - export VERSION_NAME=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
+    - export BUILD_NUMBER=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 2)
+    - echo "VERSION_NAME=$VERSION_NAME"
+    - echo "BUILD_NUMBER=$BUILD_NUMBER"
+    - echo "FLAVOR=$FLAVOR"
+    - echo "APP_NAME=$APP_NAME"
+    - echo "FIREBASE_ANDROID_APP_ID=$FIREBASE_ANDROID_APP_ID"
+    - echo "FIREBASE_IOS_APP_ID=$FIREBASE_IOS_APP_ID"
+
+  script:
+    - flutter build apk --release -t lib/main_$FLAVOR.dart --flavor $FLAVOR --build-name=$VERSION_NAME --build-number=$BUILD_NUMBER --dart-define=GOOGLE_SERVER_CLIENT_ID=$GOOGLE_SERVER_CLIENT_ID
+  after_script:
+    - flutter analyze
+  artifacts:
+    paths:
+      - build/app/outputs/flutter-apk/app-${FLAVOR}-release.apk
+    name: "${APP_NAME}-android-${FLAVOR}"
+    expire_in: 90 days
+
+build_ipa:
+  stage: build
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main_dev"'
+      when: on_success
+      variables:
+        FLAVOR: "dev"
+    - if: '$CI_COMMIT_BRANCH == "main_stage"'
+      when: manual
+      variables:
+        FLAVOR: "stage"
+    - if: '$CI_COMMIT_BRANCH == "main_prod"'
+      when: on_success
+      variables:
+        FLAVOR: "prod"
+    - when: never # Don't run on any other branch
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}-ios
+    paths:
+      - .pub-cache/
+      - $HOME/Library/Caches/CocoaPods/
+      - ios/Pods/
+      - $HOME/Library/Developer/Xcode/DerivedData/
+      - build/ios/
+  tags:
+    - vervali-mac-mini-macos
+  before_script:
+    - source ~/.zshrc || source ~/.bash_profile || true  # Load shell environment
+    - export PATH="$PATH:$HOME/flutter/bin:$HOME/development/flutter/bin"  # Add common Flutter paths
+    - flutter pub get
+    - export VERSION_NAME=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
+    - export BUILD_NUMBER=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 2)
+    # Clean and update CocoaPods
+    - cd ios && rm -rf Pods Podfile.lock && pod repo update && cd ..
+  script:
+    - flutter build ios --release -t lib/main_$FLAVOR.dart --flavor $FLAVOR --build-name=$VERSION_NAME --build-number=$BUILD_NUMBER --no-codesign
+    - mkdir -p Payload
+    - cp -r build/ios/iphoneos/Runner.app Payload/
+    - zip -r app-${FLAVOR}-release.ipa Payload
+    - rm -rf Payload
+  after_script:
+    - source ~/.zshrc || source ~/.bash_profile || true  # Load shell environment
+    - export PATH="$PATH:$HOME/flutter/bin:$HOME/development/flutter/bin"  # Add common Flutter paths
+    - flutter analyze
+  artifacts:
+    paths:
+      - app-${FLAVOR}-release.ipa
+    name: "${APP_NAME}-ios-${FLAVOR}"
+    expire_in: 90 days
+
+# ==================== FIREBASE DISTRIBUTION ====================
+
+distribute_android:
+  stage: distribute
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main_dev"'
+      when: on_success
+      variables:
+        FLAVOR: "dev"
+    - if: '$CI_COMMIT_BRANCH == "main_stage"'
+      when: manual
+      variables:
+        FLAVOR: "stage"
+    - if: '$CI_COMMIT_BRANCH == "main_prod"'
+      when: on_success
+      variables:
+        FLAVOR: "prod"
+    - when: never
+  image: node:18  
+  needs:
+    - job: build_apk
+      artifacts: true
+      optional: false
+  before_script:
+    - curl -sL https://firebase.tools | bash
+    - export VERSION_NAME=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
+    - export BUILD_NUMBER=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 2)
+  script:
+    - |
+      firebase appdistribution:distribute build/app/outputs/flutter-apk/app-${FLAVOR}-release.apk \
+        --app $FIREBASE_ANDROID_APP_ID \
+        --groups "vervali_tester_group_1" \
+        --release-notes "Platform: Android
+      Flavor: ${FLAVOR}
+      Version: ${VERSION_NAME}+${BUILD_NUMBER}
+      Branch: ${CI_COMMIT_BRANCH}
+      Commit: ${CI_COMMIT_SHA}
+      Message: ${CI_COMMIT_MESSAGE}"
+
+distribute_ios:
+  stage: distribute
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main_dev"'
+      when: on_success
+      variables:
+        FLAVOR: "dev"
+    - if: '$CI_COMMIT_BRANCH == "main_stage"'
+      when: manual
+      variables:
+        FLAVOR: "stage"
+    - if: '$CI_COMMIT_BRANCH == "main_prod"'
+      when: on_success
+      variables:
+        FLAVOR: "prod"
+    - when: never
+  image: node:18
+  needs:
+    - job: build_ipa
+      artifacts: true
+      optional: false
+  before_script:
+    - curl -sL https://firebase.tools | bash
+    - export VERSION_NAME=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
+    - export BUILD_NUMBER=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 2)
+  script:
+    - |
+      firebase appdistribution:distribute build/ios/ipa/*.ipa \
+        --app $FIREBASE_IOS_APP_ID \
+        --groups "vervali_tester_group_2" \
+        --release-notes "Platform: iOS
+      Flavor: ${FLAVOR}
+      Version: ${VERSION_NAME}+${BUILD_NUMBER}
+      Branch: ${CI_COMMIT_BRANCH}
+      Commit: ${CI_COMMIT_SHA}
+      Message: ${CI_COMMIT_MESSAGE}"
+
+# ==================== GOOGLE PLAY CONSOLE DEPLOYMENT ====================
+
+build_aab:
+  stage: build
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main_prod"'
+      when: on_success
+      variables:
+        FLAVOR: "prod"
+    - if: '$CI_COMMIT_BRANCH == "main_dev"'
+      when: on_success
+      variables:
+        FLAVOR: "dev"   
+    - if: '$CI_COMMIT_BRANCH == "main_stage"'
+      when: manual
+      variables:
+        FLAVOR: "stage"
+    - when: never
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}-android-aab
+    policy: pull-push
+    paths:
+      - .dart_tool/
+      - build/
+  image: ghcr.io/cirruslabs/flutter:stable
+  before_script:
+    - flutter pub get
+    - export VERSION_NAME=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
+    - export BUILD_NUMBER=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 2)
+    - echo "VERSION_NAME=$VERSION_NAME"
+    - echo "BUILD_NUMBER=$BUILD_NUMBER"
+    - echo "FLAVOR=$FLAVOR"
+  script:
+    - flutter build appbundle --release -t lib/main_$FLAVOR.dart --flavor $FLAVOR --build-name=$VERSION_NAME --build-number=$BUILD_NUMBER --dart-define=GOOGLE_SERVER_CLIENT_ID=$GOOGLE_SERVER_CLIENT_ID
+  after_script:
+    - flutter analyze
+  artifacts:
+    paths:
+      - build/app/outputs/bundle/${FLAVOR}Release/app-${FLAVOR}-release.aab
+    name: "${APP_NAME}-android-aab-${FLAVOR}"
+    expire_in: 90 days
+
+deploy_playstore_internal:
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main_prod"'
+      when: on_success
+      variables:
+        FLAVOR: "prod"
+    - if: '$CI_COMMIT_BRANCH == "main_dev"'
+      when: on_success
+      variables:
+        FLAVOR: "dev"   
+    - if: '$CI_COMMIT_BRANCH == "main_stage"'
+      when: manual
+      variables:
+        FLAVOR: "stage"
+    - when: never
+  image: ghcr.io/cirruslabs/flutter:stable
+  needs:
+    - job: build_aab
+      artifacts: true
+      optional: false
+  before_script:
+    # Install Ruby and Fastlane dependencies
+    - apt-get update && apt-get install -y ruby-full build-essential
+    - gem install bundler
+    - gem install fastlane
+    # Setup Google Play service account
+    - echo "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > /tmp/play_store_credentials.json
+    - export SUPPLY_JSON_KEY=/tmp/play_store_credentials.json
+    # Get version info for logging
+    - export VERSION_NAME=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
+    - export BUILD_NUMBER=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 2)
+    - echo "Deploying version $VERSION_NAME ($BUILD_NUMBER) to Play Console Internal Track"
+    # Navigate to android directory
+    - cd android
+  script:
+    # Fastlane only uploads the pre-built AAB
+    - fastlane upload_internal flavor:$FLAVOR
+  after_script:
+    # Clean up credentials
+    - rm -f /tmp/play_store_credentials.json
+
+# ==================== TESTFLIGHT DEPLOYMENT ====================
+
+deploy_testflight:
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main_prod"'
+      when: on_success
+      variables:
+        FLAVOR: "prod"
+    - if: '$CI_COMMIT_BRANCH == "main_dev"'
+      when: on_success
+      variables:
+        FLAVOR: "dev"   
+    - if: '$CI_COMMIT_BRANCH == "main_stage"'
+      when: manual
+      variables:
+        FLAVOR: "stage"
+    - when: never
+  tags:
+    - vervali-mac-mini-macos
+  needs:
+    - job: build_ipa
+      artifacts: true
+      optional: false
+  before_script:
+    # Load shell environment
+    - source ~/.zshrc || source ~/.bash_profile || true
+    - export PATH="$PATH:$HOME/flutter/bin:$HOME/development/flutter/bin"
+    # Install Fastlane if not already installed
+    - gem install bundler
+    - gem install fastlane
+    # Get version info for logging
+    - export VERSION_NAME=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 1)
+    - export BUILD_NUMBER=$(grep 'version:' pubspec.yaml | cut -d ' ' -f 2 | cut -d '+' -f 2)
+    - echo "Deploying version $VERSION_NAME ($BUILD_NUMBER) to TestFlight"
+    # Navigate to ios directory
+    - cd ios
+  script:
+    # Fastlane only uploads the pre-built IPA Need to ensure that the Fastfile is configured correctly for the upload_testflight lane
+    - fastlane upload_testflight flavor:$FLAVOR

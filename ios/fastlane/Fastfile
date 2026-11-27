@@ -1,0 +1,56 @@
+# Fastfile for iOS deployment
+# This file only handles uploading to TestFlight
+# IPA building is handled by GitLab CI
+
+default_platform(:ios)
+
+platform :ios do
+  
+  desc "Upload pre-built IPA to TestFlight"
+  lane :upload_testflight do |options|
+    flavor = options[:flavor] || "prod"
+    
+    # Path to the pre-built IPA file (built by GitLab CI)
+    ipa_path = "../app-#{flavor}-release.ipa"
+    
+    # Verify IPA exists
+    unless File.exist?(ipa_path)
+      UI.user_error!("❌ IPA file not found at: #{ipa_path}")
+    end
+    
+    upload_to_testflight(
+      ipa: ipa_path,
+      skip_waiting_for_build_processing: true,
+      skip_submission: true,
+      distribute_external: false,
+      notify_external_testers: false
+    )
+    
+    UI.success("✅ Successfully uploaded IPA to TestFlight!")
+  end
+
+  desc "Upload pre-built IPA to TestFlight and distribute to testers"
+  lane :upload_and_distribute do |options|
+    flavor = options[:flavor] || "prod"
+    
+    # Path to the pre-built IPA file
+    ipa_path = "../app-#{flavor}-release.ipa"
+    
+    # Verify IPA exists
+    unless File.exist?(ipa_path)
+      UI.user_error!("❌ IPA file not found at: #{ipa_path}")
+    end
+    
+    upload_to_testflight(
+      ipa: ipa_path,
+      skip_waiting_for_build_processing: false,
+      skip_submission: false,
+      distribute_external: true,
+      notify_external_testers: true,
+      groups: ["External Testers"]  # Customize group name as needed
+    )
+    
+    UI.success("✅ Successfully uploaded and distributed IPA to TestFlight!")
+  end
+
+end

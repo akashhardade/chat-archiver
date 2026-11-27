@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- app_name and share_label are generated per flavor (resValue) in app/build.gradle.kts. -->
+    <string name="accessibility_service_description">Chat Archiver uses this service only to back up the WhatsApp groups you choose inside the app. When you unlock your phone in the morning, or when you tap Sync now, it opens WhatsApp, finds each group you selected, and taps WhatsApp\'s own Export chat (Without media) option so the chat is sent to Chat Archiver, which saves it to your Google Drive. It reads WhatsApp\'s screens only to find those buttons and group names. It does not act on any other chat or app, never sends or deletes messages, and does not collect or share anything else from your screen.</string>
+</resources>

@@ -1,0 +1,59 @@
+# Fastfile for Android deployment
+# This file only handles uploading to Play Console
+# AAB building is handled by GitLab CI
+
+default_platform(:android)
+
+platform :android do
+  
+  desc "Upload pre-built AAB to Google Play Console Internal Track"
+  lane :upload_internal do |options|
+    flavor = options[:flavor] || "prod"
+    
+    # Path to the pre-built AAB file (built by GitLab CI)
+    aab_path = "../build/app/outputs/bundle/#{flavor}Release/app-#{flavor}-release.aab"
+    
+    # Verify AAB exists
+    unless File.exist?(aab_path)
+      UI.user_error!("❌ AAB file not found at: #{aab_path}")
+    end
+    
+    upload_to_play_store(
+      track: 'internal',
+      aab: aab_path,
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      release_status: 'completed'
+    )
+    
+    UI.success("✅ Successfully uploaded AAB to Internal Track!")
+  end
+
+  desc "Upload pre-built AAB to Google Play Console Production Track"
+  lane :upload_production do |options|
+    flavor = options[:flavor] || "prod"
+    
+    # Path to the pre-built AAB file
+    aab_path = "../build/app/outputs/bundle/#{flavor}Release/app-#{flavor}-release.aab"
+    
+    # Verify AAB exists
+    unless File.exist?(aab_path)
+      UI.user_error!("❌ AAB file not found at: #{aab_path}")
+    end
+    
+    upload_to_play_store(
+      track: 'production',
+      aab: aab_path,
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      release_status: 'completed'
+    )
+    
+    UI.success("✅ Successfully uploaded AAB to Production Track!")
+  end
+
+end

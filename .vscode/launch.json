@@ -1,0 +1,118 @@
+{
+    // Chat Archiver - flavor launch configurations
+    //
+    // Each configuration uses the flavor entry point (program) AND the Gradle
+    // flavor (--flavor):
+    //   dev   -> applicationId com.vervali.chatarchiver.dev
+    //   stage -> applicationId com.vervali.chatarchiver.stage
+    //   prod  -> applicationId com.vervali.chatarchiver
+    // so all three can be installed side by side.
+    //
+    // Google sign-in needs the OAuth *web* client ID. Copy
+    // dart_defines.json.example -> dart_defines.json and put the real Web
+    // client ID there (see doc/GOOGLE_DRIVE_SETUP.md). dart_defines.json is
+    // gitignored.
+
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Dev (Debug)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "debug",
+            "program": "lib/main_dev.dart",
+            "args": [
+                "--flavor", "dev",
+                "--dart-define-from-file=dart_defines.json"
+            ]
+        },
+        {
+            "name": "Dev (Profile)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile",
+            "program": "lib/main_dev.dart",
+            "args": [
+                "--flavor", "dev",
+                "--dart-define-from-file=dart_defines.json"
+            ]
+        },
+        {
+            "name": "Dev (Release)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release",
+            "program": "lib/main_dev.dart",
+            "args": [
+                "--flavor", "dev",
+                "--dart-define-from-file=dart_defines.json"
+            ]
+        },
+        {
+            "name": "Prod (Debug)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "debug",
+            "program": "lib/main_prod.dart",
+            "args": [
+                "--flavor", "prod",
+                "--dart-define-from-file=dart_defines.json"
+            ]
+        },
+        {
+            "name": "Prod (Profile)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile",
+            "program": "lib/main_prod.dart",
+            "args": [
+                "--flavor", "prod",
+                "--dart-define-from-file=dart_defines.json"
+            ]
+        },
+        {
+            "name": "Prod (Release)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release",
+            "program": "lib/main_prod.dart",
+            "args": [
+                "--flavor", "prod",
+                "--dart-define-from-file=dart_defines.json"
+            ]
+        },
+        {
+            "name": "Stage (Debug)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "debug",
+            "program": "lib/main_stage.dart",
+            "args": [
+                "--flavor", "stage",
+                "--dart-define-from-file=dart_defines.json"
+            ]
+        },
+        {
+            "name": "Stage (Profile)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile",
+            "program": "lib/main_stage.dart",
+            "args": [
+                "--flavor", "stage",
+                "--dart-define-from-file=dart_defines.json"
+            ]
+        },
+        {
+            "name": "Stage (Release)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release",
+            "program": "lib/main_stage.dart",
+            "args": [
+                "--flavor", "stage",
+                "--dart-define-from-file=dart_defines.json"
+            ]
+        }
+    ]
+}
